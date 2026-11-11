@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>乘法闪卡</title>
+<style>
+  :root {
+    --bg: #fdf6e9;
+    --card: #ffffff;
+    --ink: #2b2b2b;
+    --muted: #8a8172;
+    --accent: #f08c2e;
+    --correct: #3bb273;
+    --wrong: #e05252;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .screen { display: none; flex-direction: column; align-items: center; gap: 24px; width: min(560px, 100% - 32px); }
+  .screen.active { display: flex; }
+  h1 { font-size: 44px; margin: 0; }
+  .subtitle { color: var(--muted); margin: 0; font-size: 18px; }
+  .mode-buttons { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: inherit;
+    font-size: 22px;
+    padding: 14px 28px;
+    border: none;
+    border-radius: 14px;
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 3px 0 #e2d6c2;
+    cursor: pointer;
+  }
+  button:hover { transform: translateY(-1px); }
+  button.primary { background: var(--accent); color: #fff; box-shadow: 0 3px 0 #c66d1c; }
+  .mute-toggle { position: fixed; top: 16px; right: 16px; font-size: 18px; padding: 8px 14px; }
+
+  .progress { font-size: 20px; color: var(--muted); }
+  .card-stage { perspective: 900px; }
+  .card {
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    height: 220px;
+    border-radius: 24px;
+    background: var(--card);
+    box-shadow: 0 10px 30px rgba(120, 90, 40, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background-color 0.15s;
+  }
+  .card .question { font-size: 72px; font-weight: 700; letter-spacing: 2px; }
+  .card .reveal { font-size: 28px; color: #fff; min-height: 36px; }
+  .card.correct { background: var(--correct); color: #fff; }
+  .card.wrong { background: var(--wrong); color: #fff; }
+  .card.flip-out { animation: flip-out 0.25s ease-in forwards; }
+  .card.flip-in { animation: flip-in 0.25s ease-out; }
+  @keyframes flip-out { to { transform: rotateY(90deg); opacity: 0.4; } }
+  @keyframes flip-in { from { transform: rotateY(-90deg); opacity: 0.4; } }
+
+  .answer-input {
+    font: inherit;
+    font-size: 44px;
+    width: 200px;
+    text-align: center;
+    padding: 10px;
+    border: 3px solid #e2d6c2;
+    border-radius: 14px;
+    outline: none;
+  }
+  .answer-input:focus { border-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 16px; }
+
+  .result-time { font-size: 64px; font-weight: 700; margin: 0; }
+  .result-wrong { font-size: 22px; text-align: center; line-height: 1.8; }
+  .result-wrong .wrong-item { display: inline-block; margin: 0 8px; color: var(--wrong); font-weight: 600; }
+  .result-actions { display: flex; gap: 16px; }
+</style>
+</head>
+<body>
+<button class="mute-toggle" id="mute-toggle"></button>
+
+<section class="screen active" id="start-screen">
+  <h1>乘法闪卡</h1>
+  <p class="subtitle">每轮 10 张，答对越快越好</p>
+  <div class="mode-buttons">
+    <button class="primary" data-mode="mixed">混合</button>
+    <button data-mode="5">只练 ×5</button>
+    <button data-mode="10">只练 ×10</button>
+  </div>
+</section>
+
+<section class="screen" id="play-screen">
+  <div class="progress" id="progress"></div>
+  <div class="card-stage">
+    <div class="card" id="card">
+      <div class="question" id="question"></div>
+      <div class="reveal" id="reveal"></div>
+    </div>
+  </div>
+  <input class="answer-input" id="answer-input" type="text" inputmode="numeric" autocomplete="off">
+  <div class="hint">输入答案，按回车</div>
+</section>
+
+<section class="screen" id="result-screen">
+  <p class="subtitle">用时</p>
+  <p class="result-time" id="result-time"></p>
+  <div class="result-wrong" id="result-wrong"></div>
+  <div class="result-actions">
+    <button class="primary" id="again-button">再来一轮</button>
+    <button id="home-button">换题组</button>
+  </div>
+</section>
+
+<script>
+const CARDS_PER_ROUND = 10;
+const WRONG_DISPLAY_MS = 2000;
+const FLIP_MS = 250;
+const MUTE_STORAGE_KEY = "multiplication-game-muted";
+
+/** Both factors stay within 10, matching the times-table curriculum. */
+const TABLE_MAX_MULTIPLIER = { 5: 10, 10: 10 };
+
+/**
+ * Build the deck of distinct cards for a mode.
+ *
+ * Each card is {table, multiplier}; 5×10 and 10×5 are the same card, so duplicates by product pair are dropped.
+ *
+ * @param {"mixed"|"5"|"10"} mode - Which tables to include.
+ * @returns {{table: number, multiplier: number}[]} Distinct cards.
+ */
+function buildDeck(mode) {
+  const tables = mode === "mixed" ? [5, 10] : [Number(mode)];
+  const cardsByKey = new Map();
+  for (const table of tables) {
+    for (let multiplier = 1; multiplier <= TABLE_MAX_MULTIPLIER[table]; multiplier++) {
+      const key = [table, multiplier].sort((a, b) => a - b).join("x");
+      if (!cardsByKey.has(key)) cardsByKey.set(key, { table, multiplier });
+    }
+  }
+  return [...cardsByKey.values()];
+}
+
+function shuffle(items) {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+/** Canonical text for the result screen, always table first. */
+function canonicalText(card) {
+  return `${card.table}×${card.multiplier}`;
+}
+
+const state = {
+  mode: "mixed",
+  queue: [],
+  roundSize: 0,
+  answeredCount: 0,
+  wrongCards: new Set(),
+  startTime: 0,
+  locked: false,
+  muted: false,
+};
+
+const elements = {
+  screens: document.querySelectorAll(".screen"),
+  progress: document.getElementById("progress"),
+  card: document.getElementById("card"),
+  question: document.getElementById("question"),
+  reveal: document.getElementById("reveal"),
+  answerInput: document.getElementById("answer-input"),
+  resultTime: document.getElementById("result-time"),
+  resultWrong: document.getElementById("result-wrong"),
+  muteToggle: document.getElementById("mute-toggle"),
+};
+
+function showScreen(screenId) {
+  for (const screen of elements.screens) {
+    screen.classList.toggle("active", screen.id === screenId);
+  }
+}
+
+let audioContext = null;
+
+/** Two quick rising sine notes, synthesized so no audio file is needed. */
+function playCorrectSound() {
+  if (state.muted) return;
+  audioContext ??= new AudioContext();
+  const now = audioContext.currentTime;
+  [880, 1320].forEach((frequency, index) => {
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const noteStart = now + index * 0.08;
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.25, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.3);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteStart + 0.3);
+  });
+}
+
+function renderMuteToggle() {
+  elements.muteToggle.textContent = state.muted ? "🔇 声音关" : "🔊 声音开";
+}
+
+function startRound(mode) {
+  state.mode = mode;
+  state.queue = shuffle(buildDeck(mode)).slice(0, CARDS_PER_ROUND);
+  state.roundSize = state.queue.length;
+  state.answeredCount = 0;
+  state.wrongCards = new Set();
+  state.locked = false;
+  showScreen("play-screen");
+  showCurrentCard();
+  state.startTime = performance.now();
+}
+
+function showCurrentCard() {
+  const card = state.queue[0];
+  const tableFirst = Math.random() < 0.5;
+  elements.question.textContent = tableFirst
+    ? `${card.table} × ${card.multiplier}`
+    : `${card.multiplier} × ${card.table}`;
+  elements.reveal.textContent = "";
+  elements.card.className = "card flip-in";
+  elements.progress.textContent = `${state.answeredCount + 1} / ${state.roundSize}`;
+  elements.answerInput.value = "";
+  elements.answerInput.disabled = false;
+  elements.answerInput.focus();
+}
+
+function submitAnswer() {
+  if (state.locked || elements.answerInput.value === "") return;
+  const card = state.queue[0];
+  const isCorrect = Number(elements.answerInput.value) === card.table * card.multiplier;
+  state.locked = true;
+  elements.answerInput.disabled = true;
+
+  if (isCorrect) {
+    state.queue.shift();
+    state.answeredCount++;
+    playCorrectSound();
+    elements.card.className = "card correct";
+    setTimeout(() => {
+      elements.card.className = "card correct flip-out";
+      setTimeout(advance, FLIP_MS);
+    }, 150);
+  } else {
+    // A missed card goes to the back of the queue, so the round only ends once every card is answered correctly.
+    state.queue.push(state.queue.shift());
+    state.wrongCards.add(card);
+    elements.card.className = "card wrong";
+    elements.reveal.textContent = `正确答案：${card.table * card.multiplier}`;
+    setTimeout(() => {
+      elements.card.className = "card wrong flip-out";
+      setTimeout(advance, FLIP_MS);
+    }, WRONG_DISPLAY_MS);
+  }
+}
+
+function advance() {
+  state.locked = false;
+  if (state.queue.length === 0) {
+    finishRound();
+  } else {
+    showCurrentCard();
+  }
+}
+
+function finishRound() {
+  const elapsedSeconds = Math.round((performance.now() - state.startTime) / 1000);
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  elements.resultTime.textContent = minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`;
+  if (state.wrongCards.size === 0) {
+    elements.resultWrong.textContent = "全部一次答对！";
+  } else {
+    const items = [...state.wrongCards]
+      .map((card) => `<span class="wrong-item">${canonicalText(card)}</span>`)
+      .join("");
+    elements.resultWrong.innerHTML = `答错过：${items}`;
+  }
+  showScreen("result-screen");
+}
+
+document.querySelectorAll("[data-mode]").forEach((button) => {
+  button.addEventListener("click", () => startRound(button.dataset.mode));
+});
+document.getElementById("again-button").addEventListener("click", () => startRound(state.mode));
+document.getElementById("home-button").addEventListener("click", () => showScreen("start-screen"));
+
+elements.answerInput.addEventListener("input", () => {
+  elements.answerInput.value = elements.answerInput.value.replace(/\D/g, "").slice(0, 3);
+});
+elements.answerInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") submitAnswer();
+});
+
+elements.muteToggle.addEventListener("click", () => {
+  state.muted = !state.muted;
+  try { localStorage.setItem(MUTE_STORAGE_KEY, state.muted ? "1" : "0"); } catch {}
+  renderMuteToggle();
+  elements.muteToggle.blur();
+  if (!elements.answerInput.disabled) elements.answerInput.focus();
+});
+
+try { state.muted = localStorage.getItem(MUTE_STORAGE_KEY) === "1"; } catch {}
+renderMuteToggle();
+</script>
+</body>
+</html>

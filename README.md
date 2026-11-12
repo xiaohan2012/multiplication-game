@@ -1,6 +1,6 @@
 # 乘法闪卡
 
-A flashcard game for kids practicing the ×5 and ×10 times tables, with both factors at most 10.
+A flashcard game for kids practicing the ×2, ×5 and ×10 times tables, with both factors at most 10.
 
 Play: https://xiaohan2012.github.io/multiplication-game/
 

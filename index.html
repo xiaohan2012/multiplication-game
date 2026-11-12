@@ -97,6 +97,7 @@
   <p class="subtitle">每轮 10 张，答对越快越好</p>
   <div class="mode-buttons">
     <button class="primary" data-mode="mixed">混合</button>
+    <button data-mode="2">只练 ×2</button>
     <button data-mode="5">只练 ×5</button>
     <button data-mode="10">只练 ×10</button>
   </div>
@@ -131,18 +132,18 @@ const FLIP_MS = 250;
 const MUTE_STORAGE_KEY = "multiplication-game-muted";
 
 /** Both factors stay within 10, matching the times-table curriculum. */
-const TABLE_MAX_MULTIPLIER = { 5: 10, 10: 10 };
+const TABLE_MAX_MULTIPLIER = { 2: 10, 5: 10, 10: 10 };
 
 /**
  * Build the deck of distinct cards for a mode.
  *
  * Each card is {table, multiplier}; 5×10 and 10×5 are the same card, so duplicates by product pair are dropped.
  *
- * @param {"mixed"|"5"|"10"} mode - Which tables to include.
+ * @param {"mixed"|"2"|"5"|"10"} mode - Which tables to include.
  * @returns {{table: number, multiplier: number}[]} Distinct cards.
  */
 function buildDeck(mode) {
-  const tables = mode === "mixed" ? [5, 10] : [Number(mode)];
+  const tables = mode === "mixed" ? [2, 5, 10] : [Number(mode)];
   const cardsByKey = new Map();
   for (const table of tables) {
     for (let multiplier = 1; multiplier <= TABLE_MAX_MULTIPLIER[table]; multiplier++) {

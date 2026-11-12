@@ -44,6 +44,9 @@
   button:hover { transform: translateY(-1px); }
   button.primary { background: var(--accent); color: #fff; box-shadow: 0 3px 0 #c66d1c; }
   .mute-toggle { position: fixed; top: 16px; right: 16px; font-size: 18px; padding: 8px 14px; }
+  .language-switcher { position: fixed; top: 16px; left: 16px; display: flex; gap: 6px; }
+  .language-switcher button { font-size: 16px; padding: 8px 12px; }
+  .language-switcher button.selected { background: var(--accent); color: #fff; box-shadow: 0 3px 0 #c66d1c; }
 
   .progress { font-size: 20px; color: var(--muted); }
   .card-stage { perspective: 900px; }
@@ -98,17 +101,22 @@
 </style>
 </head>
 <body>
+<div class="language-switcher" id="language-switcher">
+  <button data-language="zh">中文</button>
+  <button data-language="en">English</button>
+  <button data-language="fi">Suomi</button>
+</div>
 <button class="mute-toggle" id="mute-toggle"></button>
 <canvas id="confetti-canvas"></canvas>
 
 <section class="screen active" id="start-screen">
-  <h1>乘法闪卡</h1>
-  <p class="subtitle">每轮 10 张，答对越快越好</p>
+  <h1 data-i18n="title"></h1>
+  <p class="subtitle" data-i18n="subtitle"></p>
   <div class="mode-buttons">
-    <button class="primary" data-mode="mixed">混合</button>
-    <button data-mode="2">只练 ×2</button>
-    <button data-mode="5">只练 ×5</button>
-    <button data-mode="10">只练 ×10</button>
+    <button class="primary" data-mode="mixed" data-i18n="modeMixed"></button>
+    <button data-mode="2" data-i18n="modeOnly2"></button>
+    <button data-mode="5" data-i18n="modeOnly5"></button>
+    <button data-mode="10" data-i18n="modeOnly10"></button>
   </div>
 </section>
 
@@ -121,16 +129,16 @@
     </div>
   </div>
   <input class="answer-input" id="answer-input" type="text" inputmode="numeric" autocomplete="off">
-  <div class="hint">输入答案，按回车</div>
+  <div class="hint" data-i18n="hint"></div>
 </section>
 
 <section class="screen" id="result-screen">
-  <p class="subtitle">用时</p>
+  <p class="subtitle" data-i18n="timeLabel"></p>
   <p class="result-time" id="result-time"></p>
   <div class="result-wrong" id="result-wrong"></div>
   <div class="result-actions">
-    <button class="primary" id="again-button">再来一轮</button>
-    <button id="home-button">换题组</button>
+    <button class="primary" id="again-button" data-i18n="playAgain"></button>
+    <button id="home-button" data-i18n="changeTables"></button>
   </div>
 </section>
 
@@ -141,6 +149,82 @@ const FLIP_MS = 250;
 const MUTE_STORAGE_KEY = "multiplication-game-muted";
 /** A round with at most this many distinct missed cards still earns the small celebration. */
 const MAX_WRONG_FOR_ENCOURAGEMENT = 2;
+
+const LANGUAGE_STORAGE_KEY = "multiplication-game-language";
+
+/** UI text per language; functions take the values they interpolate. */
+const STRINGS = {
+  zh: {
+    htmlLang: "zh-CN",
+    title: "乘法闪卡",
+    subtitle: "每轮 10 张，答对越快越好",
+    modeMixed: "混合",
+    modeOnly2: "只练 ×2",
+    modeOnly5: "只练 ×5",
+    modeOnly10: "只练 ×10",
+    hint: "输入答案，按回车",
+    correctAnswer: (answer) => `正确答案：${answer}`,
+    timeLabel: "用时",
+    duration: (minutes, seconds) => (minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`),
+    perfectRound: "🎉 全部一次答对！🎉",
+    nearPerfectRound: "差一点点！继续加油 💪",
+    missedCards: "答错过：",
+    playAgain: "再来一轮",
+    changeTables: "换题组",
+    soundOn: "🔊 声音开",
+    soundOff: "🔇 声音关",
+  },
+  en: {
+    htmlLang: "en",
+    title: "Times Table Flashcards",
+    subtitle: "10 cards per round. Answer as fast as you can!",
+    modeMixed: "Mixed",
+    modeOnly2: "Only ×2",
+    modeOnly5: "Only ×5",
+    modeOnly10: "Only ×10",
+    hint: "Type your answer and press Enter",
+    correctAnswer: (answer) => `Answer: ${answer}`,
+    timeLabel: "Time",
+    duration: (minutes, seconds) => (minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`),
+    perfectRound: "🎉 All correct on the first try! 🎉",
+    nearPerfectRound: "So close! Keep it up 💪",
+    missedCards: "Missed: ",
+    playAgain: "Play again",
+    changeTables: "Change tables",
+    soundOn: "🔊 Sound on",
+    soundOff: "🔇 Sound off",
+  },
+  fi: {
+    htmlLang: "fi",
+    title: "Kertotaulukortit",
+    subtitle: "10 korttia kierroksessa. Vastaa niin nopeasti kuin osaat!",
+    modeMixed: "Sekaisin",
+    modeOnly2: "Vain ×2",
+    modeOnly5: "Vain ×5",
+    modeOnly10: "Vain ×10",
+    hint: "Kirjoita vastaus ja paina Enter",
+    correctAnswer: (answer) => `Oikea vastaus: ${answer}`,
+    timeLabel: "Aika",
+    duration: (minutes, seconds) => (minutes > 0 ? `${minutes} min ${seconds} s` : `${seconds} s`),
+    perfectRound: "🎉 Kaikki oikein ensimmäisellä yrityksellä! 🎉",
+    nearPerfectRound: "Melkein! Hyvä, jatka samaan malliin 💪",
+    missedCards: "Menivät väärin: ",
+    playAgain: "Uusi kierros",
+    changeTables: "Vaihda taulua",
+    soundOn: "🔊 Ääni päällä",
+    soundOff: "🔇 Ääni pois",
+  },
+};
+
+/** Pick the saved language, else the browser's, else Chinese. */
+function detectInitialLanguage() {
+  try {
+    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (saved in STRINGS) return saved;
+  } catch {}
+  const browserLanguage = (navigator.language || "").slice(0, 2);
+  return browserLanguage in STRINGS ? browserLanguage : "zh";
+}
 
 /** Both factors stay within 10, matching the times-table curriculum. */
 const TABLE_MAX_MULTIPLIER = { 2: 10, 5: 10, 10: 10 };
@@ -188,7 +272,14 @@ const state = {
   startTime: 0,
   locked: false,
   muted: false,
+  language: "zh",
+  // Kept so the result screen can be re-rendered when the language changes.
+  lastElapsedSeconds: 0,
 };
+
+function text() {
+  return STRINGS[state.language];
+}
 
 const elements = {
   screens: document.querySelectorAll(".screen"),
@@ -297,7 +388,22 @@ function launchConfetti(pieceCount) {
 }
 
 function renderMuteToggle() {
-  elements.muteToggle.textContent = state.muted ? "🔇 声音关" : "🔊 声音开";
+  elements.muteToggle.textContent = state.muted ? text().soundOff : text().soundOn;
+}
+
+/** Apply the current language to every static label and to the result screen. */
+function renderLanguage() {
+  const strings = text();
+  document.documentElement.lang = strings.htmlLang;
+  document.title = strings.title;
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    element.textContent = strings[element.dataset.i18n];
+  });
+  document.querySelectorAll("[data-language]").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.language === state.language);
+  });
+  renderMuteToggle();
+  renderResult();
 }
 
 function startRound(mode) {
@@ -347,7 +453,7 @@ function submitAnswer() {
     state.queue.push(state.queue.shift());
     state.wrongCards.add(card);
     elements.card.className = "card wrong";
-    elements.reveal.textContent = `正确答案：${card.table * card.multiplier}`;
+    elements.reveal.textContent = text().correctAnswer(card.table * card.multiplier);
     setTimeout(() => {
       elements.card.className = "card wrong flip-out";
       setTimeout(advance, FLIP_MS);
@@ -365,27 +471,34 @@ function advance() {
 }
 
 function finishRound() {
-  const elapsedSeconds = Math.round((performance.now() - state.startTime) / 1000);
-  const minutes = Math.floor(elapsedSeconds / 60);
-  const seconds = elapsedSeconds % 60;
-  elements.resultTime.textContent = minutes > 0 ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`;
+  state.lastElapsedSeconds = Math.round((performance.now() - state.startTime) / 1000);
+  renderResult();
+  showScreen("result-screen");
   if (state.wrongCards.size === 0) {
-    elements.resultWrong.innerHTML = `<span class="perfect">🎉 全部一次答对！🎉</span>`;
     launchConfetti(160);
     playPerfectRoundSound();
-  } else {
-    const items = [...state.wrongCards]
-      .map((card) => `<span class="wrong-item">${canonicalText(card)}</span>`)
-      .join("");
-    if (state.wrongCards.size <= MAX_WRONG_FOR_ENCOURAGEMENT) {
-      elements.resultWrong.innerHTML = `<span class="finished">差一点点！继续加油 💪</span><br>答错过：${items}`;
-      launchConfetti(40);
-      playNearPerfectRoundSound();
-    } else {
-      elements.resultWrong.innerHTML = `答错过：${items}`;
-    }
+  } else if (state.wrongCards.size <= MAX_WRONG_FOR_ENCOURAGEMENT) {
+    launchConfetti(40);
+    playNearPerfectRoundSound();
   }
-  showScreen("result-screen");
+}
+
+/** Fill the result screen from the last round; safe to call again after a language switch. */
+function renderResult() {
+  const strings = text();
+  const minutes = Math.floor(state.lastElapsedSeconds / 60);
+  const seconds = state.lastElapsedSeconds % 60;
+  elements.resultTime.textContent = strings.duration(minutes, seconds);
+  const items = [...state.wrongCards]
+    .map((card) => `<span class="wrong-item">${canonicalText(card)}</span>`)
+    .join("");
+  if (state.wrongCards.size === 0) {
+    elements.resultWrong.innerHTML = `<span class="perfect">${strings.perfectRound}</span>`;
+  } else if (state.wrongCards.size <= MAX_WRONG_FOR_ENCOURAGEMENT) {
+    elements.resultWrong.innerHTML = `<span class="finished">${strings.nearPerfectRound}</span><br>${strings.missedCards}${items}`;
+  } else {
+    elements.resultWrong.innerHTML = `${strings.missedCards}${items}`;
+  }
 }
 
 document.querySelectorAll("[data-mode]").forEach((button) => {
@@ -409,8 +522,19 @@ elements.muteToggle.addEventListener("click", () => {
   if (!elements.answerInput.disabled) elements.answerInput.focus();
 });
 
+document.querySelectorAll("[data-language]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.language = button.dataset.language;
+    try { localStorage.setItem(LANGUAGE_STORAGE_KEY, state.language); } catch {}
+    renderLanguage();
+    button.blur();
+    if (!elements.answerInput.disabled) elements.answerInput.focus();
+  });
+});
+
 try { state.muted = localStorage.getItem(MUTE_STORAGE_KEY) === "1"; } catch {}
-renderMuteToggle();
+state.language = detectInitialLanguage();
+renderLanguage();
 </script>
 </body>
 </html>
